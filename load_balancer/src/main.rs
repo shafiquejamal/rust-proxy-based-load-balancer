@@ -75,6 +75,7 @@ async fn main() {
     let worker_hosts = vec![
         "http://localhost:3000".to_string(),
         "http://localhost:3001".to_string(),
+        "http://localhost:3002".to_string(),
     ];
 
     let load_balancer = Arc::new(RwLock::new(
