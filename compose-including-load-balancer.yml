@@ -1,5 +1,13 @@
 version: "3.9"
 services:
+  load_balancer:
+    build:
+      context: ./load_balancer
+    restart: "always"
+    ports:
+      - "9000:1337"
+    environment:
+      CONTAINER: "yes"
   worker-000:
     build:
       context: ./worker
@@ -30,3 +38,4 @@ services:
       HEALTH_CHECK_DELAY_MS: ${HEALTH_CHECK_DELAY_MS_WORKER_002}
       WORKER_NUMBER: '002'
       PORT: 3000
+

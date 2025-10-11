@@ -72,11 +72,21 @@ async fn handle(
 
 #[tokio::main]
 async fn main() {
-    let worker_hosts = vec![
-        "http://localhost:3000".to_string(),
-        "http://localhost:3001".to_string(),
-        "http://localhost:3002".to_string(),
-    ];
+    let worker_hosts: Vec<String> = if std::env::var("CONTAINER").is_ok() {
+        // if this package is being run inside of a container
+        vec![
+            "http://worker-000:3000".to_string(),
+            "http://worker-001:3000".to_string(),
+            "http://worker-002:3000".to_string(),
+        ]
+    } else {
+        // if this package is being run locally, but the workers are running in containerswj
+        vec![
+            "http://localhost:3000".to_string(),
+            "http://localhost:3001".to_string(),
+            "http://localhost:3002".to_string(),
+        ]
+    };
 
     let load_balancer = Arc::new(RwLock::new(
         LoadBalancer::new(worker_hosts).expect("failed to create load balancer"),
