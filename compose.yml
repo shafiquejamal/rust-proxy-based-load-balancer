@@ -5,28 +5,28 @@ services:
       context: ./worker
     restart: "always"
     ports:
-      - "${WORKER_000_PORT}:${WORKER_000_PORT}"
+      - "${WORKER_000_PORT}:3000"
     environment:
       HEALTH_CHECK_DELAY_MS: ${HEALTH_CHECK_DELAY_MS_WORKER_000}
       WORKER_NUMBER: '000'
-      PORT: ${WORKER_000_PORT}
+      PORT: 3000 
   worker-001:
     build:
       context: ./worker
     restart: "always"
     ports:
-      - "${WORKER_001_PORT}:${WORKER_001_PORT}"
+      - "${WORKER_001_PORT}:3000"
     environment:
       HEALTH_CHECK_DELAY_MS: ${HEALTH_CHECK_DELAY_MS_WORKER_001}
       WORKER_NUMBER: '001'
-      PORT: ${WORKER_001_PORT}
+      PORT: 3000
   worker-002:
     build:
       context: ./worker
     restart: "always"
     ports:
-      - "${WORKER_002_PORT}:${WORKER_002_PORT}"
+      - "${WORKER_002_PORT}:3000"
     environment:
       HEALTH_CHECK_DELAY_MS: ${HEALTH_CHECK_DELAY_MS_WORKER_002}
       WORKER_NUMBER: '002'
-      PORT: ${WORKER_002_PORT}
+      PORT: 3000
