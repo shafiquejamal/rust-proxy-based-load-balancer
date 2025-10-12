@@ -4,18 +4,20 @@ use hyper::{
     service::{make_service_fn, service_fn},
     Body, Request, Response, Server,
 };
-use load_balancer::{LoadBalancer, RoundRobinStrategy};
+use load_balancer::{utils::init_tracing, FastestServerStrategy, LoadBalancer, RoundRobinStrategy};
 use tokio::sync::RwLock;
 
 async fn handle(
     req: Request<Body>,
     load_balancer: Arc<RwLock<LoadBalancer>>,
 ) -> Result<Response<Body>, hyper::Error> {
-    load_balancer.write().await.forward_request(req).await
+    load_balancer.write().await.forward_request(req).await.await
 }
 
 #[tokio::main]
 async fn main() {
+    color_eyre::install().expect("Failed to install color_eyre");
+    init_tracing().expect("Failed to initialize tracing");
     let worker_hosts: Vec<String> = if std::env::var("CONTAINER").is_ok() {
         // if this package is being run inside of a container
         vec![
@@ -32,9 +34,12 @@ async fn main() {
         ]
     };
 
-    let round_robin_strategy = Box::new(RoundRobinStrategy::new(worker_hosts));
+    // let round_robin_strategy = Box::new(RoundRobinStrategy::new(worker_hosts));
+    let fasted_connection_strategy = Box::new(FastestServerStrategy::new(worker_hosts));
     let load_balancer = Arc::new(RwLock::new(
-        LoadBalancer::new(round_robin_strategy).expect("failed to create load balancer"),
+        LoadBalancer::new(fasted_connection_strategy)
+            .await
+            .expect("failed to create load balancer"),
     ));
 
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));

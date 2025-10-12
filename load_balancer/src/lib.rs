@@ -2,9 +2,10 @@ use hyper::{client::ResponseFuture, Body, Client, Request, Uri};
 use std::str::FromStr;
 
 mod strategy;
+pub mod utils;
 
-pub use strategy::RoundRobinStrategy;
 use strategy::Strategy;
+pub use strategy::{FastestServerStrategy, RoundRobinStrategy};
 
 pub struct LoadBalancer {
     client: Client<hyper::client::HttpConnector>,
@@ -12,8 +13,8 @@ pub struct LoadBalancer {
 }
 
 impl LoadBalancer {
-    pub fn new(mut strategy: Box<dyn Strategy>) -> Result<Self, String> {
-        if strategy.get_worker().is_none() {
+    pub async fn new(mut strategy: Box<dyn Strategy>) -> Result<Self, String> {
+        if strategy.get_worker().await.is_none() {
             return Err("No worker hosts provided".into());
         }
 
@@ -23,8 +24,8 @@ impl LoadBalancer {
         })
     }
 
-    pub fn forward_request(&mut self, req: Request<Body>) -> ResponseFuture {
-        let mut worker_uri = self.get_worker().to_owned();
+    pub async fn forward_request(&mut self, req: Request<Body>) -> ResponseFuture {
+        let mut worker_uri = self.get_worker().await;
 
         // Extract the path and query from the original request
         if let Some(path_and_query) = req.uri().path_and_query() {
@@ -52,7 +53,7 @@ impl LoadBalancer {
         self.client.request(new_req)
     }
 
-    fn get_worker(&mut self) -> &str {
-        self.strategy.get_worker().unwrap()
+    async fn get_worker(&mut self) -> String {
+        self.strategy.get_worker().await.unwrap()
     }
 }
