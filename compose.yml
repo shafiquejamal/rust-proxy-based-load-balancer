@@ -1,0 +1,32 @@
+version: "3.9"
+services:
+  worker-000:
+    build:
+      context: ./worker
+    restart: "always"
+    ports:
+      - "${WORKER_000_PORT}:3000"
+    environment:
+      HEALTH_CHECK_DELAY_MS: ${HEALTH_CHECK_DELAY_MS_WORKER_000}
+      WORKER_NUMBER: '000'
+      PORT: 3000
+  worker-001:
+    build:
+      context: ./worker
+    restart: "always"
+    ports:
+      - "${WORKER_001_PORT}:3000"
+    environment:
+      HEALTH_CHECK_DELAY_MS: ${HEALTH_CHECK_DELAY_MS_WORKER_001}
+      WORKER_NUMBER: '001'
+      PORT: 3000
+  worker-002:
+    build:
+      context: ./worker
+    restart: "always"
+    ports:
+      - "${WORKER_002_PORT}:3000"
+    environment:
+      HEALTH_CHECK_DELAY_MS: ${HEALTH_CHECK_DELAY_MS_WORKER_002}
+      WORKER_NUMBER: '002'
+      PORT: 3000
