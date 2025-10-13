@@ -13,7 +13,14 @@ async fn handle(
 ) -> Result<Response<Body>, hyper::Error> {
     load_balancer.write().await.forward_request(req).await.await
 }
-
+async fn router(
+    req: Request<Body>,
+    load_balancer: Arc<RwLock<LoadBalancer>>,
+) -> Result<Response<Body>, hyper::Error> {
+    match req.uri().path() {
+        _ => handle(req, load_balancer).await,
+    }
+}
 #[tokio::main]
 async fn main() {
     color_eyre::install().expect("Failed to install color_eyre");
@@ -43,11 +50,16 @@ async fn main() {
     ));
 
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));
-
-    let server = Server::bind(&addr).serve(make_service_fn(move |_conn| {
+    let make_svc = make_service_fn(move |_conn| {
         let load_balancer = load_balancer.clone();
-        async move { Ok::<_, Infallible>(service_fn(move |req| handle(req, load_balancer.clone()))) }
-    }));
+        async { Ok::<_, Infallible>(service_fn(move |_req| router(_req, load_balancer.clone()))) }
+    });
+
+    let server = Server::bind(&addr).serve(make_svc);
+    // let server = Server::bind(&addr).serve(make_service_fn(move |_conn| {
+    //     let load_balancer = load_balancer.clone();
+    //     async move { Ok::<_, Infallible>(service_fn(move |req| handle(req, load_balancer.clone()))) }
+    // }));
 
     if let Err(e) = server.await {
         println!("error: {}", e);
