@@ -1,5 +1,6 @@
 use crate::strategy::Strategy;
 
+#[derive(Debug)]
 pub struct RoundRobinStrategy {
     worker_hosts: Vec<String>,
     current_worker: usize,
@@ -7,6 +8,7 @@ pub struct RoundRobinStrategy {
 
 #[async_trait::async_trait]
 impl Strategy for RoundRobinStrategy {
+    #[tracing::instrument(skip_all)]
     async fn get_worker(&mut self) -> Option<String> {
         if self.worker_hosts.is_empty() {
             return None;
@@ -18,6 +20,7 @@ impl Strategy for RoundRobinStrategy {
 }
 
 impl RoundRobinStrategy {
+    #[tracing::instrument(name = "Create RoundRobinStrategy with worker_hosts")]
     pub fn new(worker_hosts: Vec<String>) -> Self {
         Self {
             worker_hosts,

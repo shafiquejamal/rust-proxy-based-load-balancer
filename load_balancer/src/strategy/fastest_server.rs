@@ -7,7 +7,7 @@ use tracing::Level;
 
 use crate::strategy::Strategy;
 
-#[derive(Eq, PartialEq, Display)]
+#[derive(Eq, PartialEq, Display, Debug)]
 #[display("host:{host}, delay:{delay_ms}")]
 pub struct WorkerDelay {
     pub host: String,
@@ -26,6 +26,7 @@ impl PartialOrd for WorkerDelay {
     }
 }
 
+#[derive(Debug)]
 pub struct FastestServerStrategy {
     worker_hosts: BinaryHeap<Reverse<WorkerDelay>>,
     client: Client<hyper::client::HttpConnector>,
@@ -33,6 +34,7 @@ pub struct FastestServerStrategy {
 
 #[async_trait::async_trait]
 impl Strategy for FastestServerStrategy {
+    #[tracing::instrument(skip_all)]
     async fn get_worker(&mut self) -> Option<String> {
         let fastest_worker = self.worker_hosts.peek_mut();
         match fastest_worker {
@@ -66,7 +68,7 @@ impl Strategy for FastestServerStrategy {
 }
 
 impl FastestServerStrategy {
-    #[tracing::instrument]
+    #[tracing::instrument(name = "Create FastestServerStrategy with worker_hosts")]
     pub fn new(worker_hosts: Vec<String>) -> Self {
         Self::new_with_client(worker_hosts, None)
     }
