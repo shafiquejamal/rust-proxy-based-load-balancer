@@ -35,6 +35,7 @@ async fn handle_set_strategy(
         .unwrap_or_else(HashMap::new);
     match params.get("strategy") {
         Some(strategy) => {
+            // TODO: Handle the error properly, instead of crashing the server
             let new_strategy = StrategyNames::from_str(strategy.as_str())
                 .unwrap_or_else(|_e| panic!("Could not parse strategy"));
             let existing_strategy = load_balancer.read().await.get_strategy();
@@ -55,6 +56,7 @@ async fn handle_set_strategy(
                 .unwrap(); // Unwrapping is generally fine here if you're sure about the body
             Ok(response)
         }
+        // TODO: Handle the error properly, instead of crashing the server
         None => panic!("TODO: return the proper type of error"),
     }
 }
@@ -88,10 +90,10 @@ async fn main() {
         ]
     };
 
-    // let round_robin_strategy = Box::new(RoundRobinStrategy::new(worker_hosts));
-    // let fasted_connection_strategy = Box::new(FastestServerStrategy::new(worker_hosts));
-    // let random_strategy = Box::new(RandomStrategy::new(worker_hosts));
-    // let round_robin_strategy = Box::new(RoundRobinStrategy::new(worker_hosts));
+    // TODO: change strategy manager to take Arc<Vec<String>> instead of Vec<String>. I tried this
+    // but couldn't implement it for the FastestServerStrategy strategy, becuase of the way that
+    // I measure the fastest server - I have to consruct a WorkerDelay instance, and couldn't
+    // figure out how to get the lifetimes working
     let strategy_manager = StrategyManager::new(worker_hosts);
     let load_balancer = Arc::new(RwLock::new(
         LoadBalancer::new(strategy_manager)
