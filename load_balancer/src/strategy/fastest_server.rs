@@ -29,7 +29,12 @@ impl PartialOrd for WorkerDelay {
 #[derive(Debug)]
 pub struct FastestServerStrategy {
     worker_hosts: BinaryHeap<Reverse<WorkerDelay>>,
-    client: Client<hyper::client::HttpConnector>,
+    client: Client<hyper::client::HttpConnector>, // Box<dyn MyHTTPClient>,
+}
+
+#[async_trait::async_trait]
+pub trait MyHTTPClient {
+    async fn request();
 }
 
 #[async_trait::async_trait]

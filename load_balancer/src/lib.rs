@@ -1,31 +1,49 @@
 use hyper::{client::ResponseFuture, Body, Client, Request, Uri};
 use std::str::FromStr;
+use tracing::Level;
 
-mod strategy;
+pub mod strategy;
 pub mod utils;
 
-use strategy::Strategy;
-pub use strategy::{FastestServerStrategy, RoundRobinStrategy};
+pub use strategy::{FastestServerStrategy, RandomStrategy, RoundRobinStrategy};
+
+use crate::strategy::{StrategyManager, StrategyNames};
 
 pub struct LoadBalancer {
     client: Client<hyper::client::HttpConnector>,
-    strategy: Box<dyn Strategy>,
+    strategy_manager: StrategyManager,
 }
 
 impl LoadBalancer {
-    pub async fn new(mut strategy: Box<dyn Strategy>) -> Result<Self, String> {
-        if strategy.get_worker().await.is_none() {
+    pub fn get_strategy(&self) -> StrategyNames {
+        self.strategy_manager.get_strategy()
+    }
+    #[tracing::instrument(skip_all)]
+    pub fn set_strategy(&mut self, new_strategy: StrategyNames) {
+        let existing_strategy = self.strategy_manager.get_strategy();
+        self.strategy_manager.set_strategy(new_strategy);
+        tracing::event!(
+            Level::INFO,
+            existing_strategy = format!("{}", existing_strategy),
+            new_strategy = format!("{}", new_strategy)
+        );
+    }
+    // TODO: Is this the right approach, to have a strategy manager?
+    pub async fn new(mut strategy_manager: StrategyManager) -> Result<Self, String> {
+        if strategy_manager.get_worker().await.is_none() {
             return Err("No worker hosts provided".into());
         }
 
         Ok(LoadBalancer {
             client: Client::new(),
-            strategy,
+            strategy_manager,
         })
     }
 
+    #[tracing::instrument(skip_all)]
     pub async fn forward_request(&mut self, req: Request<Body>) -> ResponseFuture {
         let mut worker_uri = self.get_worker().await;
+        tracing::event!(Level::INFO, worker_uri);
 
         // Extract the path and query from the original request
         if let Some(path_and_query) = req.uri().path_and_query() {
@@ -54,6 +72,6 @@ impl LoadBalancer {
     }
 
     async fn get_worker(&mut self) -> String {
-        self.strategy.get_worker().await.unwrap()
+        self.strategy_manager.get_worker().await.unwrap()
     }
 }
