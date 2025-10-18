@@ -1,4 +1,6 @@
 use std::{collections::HashMap, convert::Infallible, net::SocketAddr, str::FromStr, sync::Arc};
+mod utils;
+use utils::constants;
 
 use hyper::{
     body::HttpBody,
@@ -20,6 +22,7 @@ async fn handle_default(
 }
 
 // visit /set_strategy/{strategy_name}
+#[tracing::instrument(skip_all)]
 async fn handle_set_strategy(
     req: Request<Body>,
     load_balancer: Arc<RwLock<LoadBalancer>>,
@@ -32,8 +35,8 @@ async fn handle_set_strategy(
                 .into_owned()
                 .collect()
         })
-        .unwrap_or_else(HashMap::new);
-    match params.get("strategy") {
+        .expect("Could not parse query parameters");
+    match params.get(constants::STRATEGY) {
         Some(strategy) => {
             // TODO: Handle the error properly, instead of crashing the server
             let new_strategy = StrategyNames::from_str(strategy.as_str())
@@ -44,20 +47,27 @@ async fn handle_set_strategy(
             let mut response_builder = Response::builder();
 
             // Optionally, set headers
-            response_builder = response_builder.header("Content-Type", "text/plain");
+            response_builder =
+                response_builder.header(constants::CONTENT_TYPE, constants::TEXT_PLAIN);
 
             // Build the response with a 200 OK status and a body
             let response = response_builder
-                .status(StatusCode::OK) // This is the default, so it's often optional
+                .status(StatusCode::OK)
                 .body(Body::from(format!(
                     "original strategy:{}, new strategy:{}",
                     existing_strategy, new_strategy
                 )))
-                .unwrap(); // Unwrapping is generally fine here if you're sure about the body
+                .unwrap_or_else(|e| {
+                    tracing::error!("Failed to build response: {}", e);
+                    panic!("Failed to build response")
+                });
             Ok(response)
         }
         // TODO: Handle the error properly, instead of crashing the server
-        None => panic!("TODO: return the proper type of error"),
+        None => {
+            tracing::error!("No strategy provided");
+            panic!("No strategy provided");
+        }
     }
 }
 
@@ -94,7 +104,10 @@ async fn main() {
     // but couldn't implement it for the FastestServerStrategy strategy, becuase of the way that
     // I measure the fastest server - I have to consruct a WorkerDelay instance, and couldn't
     // figure out how to get the lifetimes working
-    let strategy_manager = StrategyManager::new(worker_hosts);
+
+    // TODO: allow the user to pass in the default strategy via a command line argument when
+    // starting the application
+    let strategy_manager = StrategyManager::new(worker_hosts, Option::from(StrategyNames::Random));
     let load_balancer = Arc::new(RwLock::new(
         LoadBalancer::new(strategy_manager)
             .await

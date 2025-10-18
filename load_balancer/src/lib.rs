@@ -5,9 +5,8 @@ use tracing::Level;
 pub mod strategy;
 pub mod utils;
 
-pub use strategy::{FastestServerStrategy, RandomStrategy, RoundRobinStrategy};
-
 use crate::strategy::{StrategyManager, StrategyNames};
+pub use strategy::{FastestServerStrategy, RandomStrategy, RoundRobinStrategy};
 
 pub struct LoadBalancer {
     client: Client<hyper::client::HttpConnector>,

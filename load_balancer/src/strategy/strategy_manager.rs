@@ -12,7 +12,7 @@ pub struct StrategyManager {
 }
 
 impl StrategyManager {
-    pub fn new(worker_hosts: Vec<String>) -> Self {
+    pub fn new(worker_hosts: Vec<String>, default_strategy: Option<StrategyNames>) -> Self {
         // TODO:: add a check that the current strategy is in the map of all strategies
         let random_strategy = RandomStrategy::new(worker_hosts.clone());
         let fastest_server_strategy = FastestServerStrategy::new(worker_hosts.clone());
@@ -28,7 +28,7 @@ impl StrategyManager {
         );
         all_strategies.insert(StrategyNames::RoundRobin, Box::new(round_robin_strategy));
         Self {
-            current_strategy: StrategyNames::Random,
+            current_strategy: default_strategy.unwrap_or(StrategyNames::Random),
             all_strategies,
         }
     }
