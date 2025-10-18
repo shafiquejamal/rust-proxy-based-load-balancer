@@ -39,7 +39,7 @@ impl StrategyManager {
         let strategy = self.all_strategies.get_mut(&self.current_strategy);
         let worker = strategy
             .map(async |b| b.get_worker().await.map(|w| w.clone()))
-            .unwrap()
+            .expect("Could not get the worker from the strategy")
             .await;
         return worker;
     }
