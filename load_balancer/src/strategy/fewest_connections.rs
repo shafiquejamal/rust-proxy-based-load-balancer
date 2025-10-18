@@ -5,7 +5,7 @@ use crate::performance::PerformanceMetrics;
 use crate::strategy::Strategy;
 
 #[derive(Debug)]
-pub struct FastestServerStrategy {
+pub struct FewestConnectionsStrategy {
     performance_metrics: Arc<RwLock<PerformanceMetrics>>,
 }
 
@@ -15,19 +15,19 @@ pub trait MyHTTPClient {
 }
 
 #[async_trait::async_trait]
-impl Strategy for FastestServerStrategy {
+impl Strategy for FewestConnectionsStrategy {
     #[tracing::instrument(skip_all)]
     async fn get_worker(&mut self) -> Option<String> {
         let workers = self.performance_metrics.read().await;
-        let fastest_worker = workers
-            .latency_ms
+        let fewest_connection_worker = workers
+            .connections_count
             .peek()
             .map(|worker| worker.0.host.clone());
-        fastest_worker
+        fewest_connection_worker
     }
 }
 
-impl FastestServerStrategy {
+impl FewestConnectionsStrategy {
     #[tracing::instrument(name = "Create FastestServerStrategy with worker_hosts")]
     pub fn new(performance_metrics: Arc<RwLock<PerformanceMetrics>>) -> Self {
         Self {

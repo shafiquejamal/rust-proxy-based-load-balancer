@@ -11,4 +11,5 @@ pub enum StrategyNames {
     RoundRobin,
     FastestServer,
     Random,
+    FewestConnections,
 }

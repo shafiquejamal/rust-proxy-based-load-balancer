@@ -10,12 +10,12 @@ pub struct RoundRobinStrategy {
 impl Strategy for RoundRobinStrategy {
     #[tracing::instrument(skip_all)]
     async fn get_worker(&mut self) -> Option<String> {
-        if self.worker_hosts.is_empty() {
-            return None;
+        if let Some(worker) = self.worker_hosts.get(self.current_worker) {
+            self.current_worker = (self.current_worker + 1) % self.worker_hosts.len();
+            Some(worker.clone())
+        } else {
+            None
         }
-        let worker = self.worker_hosts.get(self.current_worker).unwrap().clone();
-        self.current_worker = (self.current_worker + 1) % self.worker_hosts.len();
-        Some(worker)
     }
 }
 

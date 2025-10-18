@@ -1,8 +1,11 @@
 use core::str;
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
+
+use tokio::sync::RwLock;
 
 use crate::{
-    strategy::{fastest_server, Strategy, StrategyNames},
+    performance::PerformanceMetrics,
+    strategy::{fastest_server, FewestConnectionsStrategy, Strategy, StrategyNames},
     FastestServerStrategy, RandomStrategy, RoundRobinStrategy,
 };
 
@@ -12,13 +15,15 @@ pub struct StrategyManager {
 }
 
 impl StrategyManager {
-    pub fn new(worker_hosts: Vec<String>, default_strategy: Option<StrategyNames>) -> Self {
-        // TODO:: add a check that the current strategy is in the map of all strategies
+    pub fn new(
+        worker_hosts: Vec<String>,
+        default_strategy: Option<StrategyNames>,
+        performance_metrics: Arc<RwLock<PerformanceMetrics>>,
+    ) -> Self {
         let random_strategy = RandomStrategy::new(worker_hosts.clone());
-        let fastest_server_strategy = FastestServerStrategy::new(worker_hosts.clone());
+        let fastest_server_strategy = FastestServerStrategy::new(performance_metrics.clone());
         let round_robin_strategy = RoundRobinStrategy::new(worker_hosts);
-        // TODO: How would I implement FEWEST CONNECTIONS? Can the LB keep track of the
-        // number of connections?
+        let fewest_connections = FewestConnectionsStrategy::new(performance_metrics);
         let mut all_strategies: HashMap<StrategyNames, Box<dyn Strategy>> = HashMap::new();
 
         all_strategies.insert(StrategyNames::Random, Box::new(random_strategy));
@@ -26,7 +31,12 @@ impl StrategyManager {
             StrategyNames::FastestServer,
             Box::new(fastest_server_strategy),
         );
+
         all_strategies.insert(StrategyNames::RoundRobin, Box::new(round_robin_strategy));
+        all_strategies.insert(
+            StrategyNames::FewestConnections,
+            Box::new(fewest_connections),
+        );
         Self {
             current_strategy: default_strategy.unwrap_or(StrategyNames::Random),
             all_strategies,

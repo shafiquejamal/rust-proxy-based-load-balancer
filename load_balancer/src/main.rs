@@ -1,5 +1,7 @@
 use std::{collections::HashMap, convert::Infallible, net::SocketAddr, str::FromStr, sync::Arc};
+mod performance;
 mod utils;
+use crate::performance::metrics;
 use utils::constants;
 
 use hyper::{
@@ -8,6 +10,7 @@ use hyper::{
     Body, Request, Response, Server, StatusCode,
 };
 use load_balancer::{
+    performance::PerformanceMetrics,
     strategy::{strategy_manager, StrategyManager, StrategyNames},
     utils::init_tracing,
     FastestServerStrategy, LoadBalancer, RandomStrategy, RoundRobinStrategy,
@@ -107,9 +110,16 @@ async fn main() {
 
     // TODO: allow the user to pass in the default strategy via a command line argument when
     // starting the application
-    let strategy_manager = StrategyManager::new(worker_hosts, Option::from(StrategyNames::Random));
+    let performance_metrics = Arc::new(RwLock::new(
+        load_balancer::performance::PerformanceMetrics::new(),
+    ));
+    let strategy_manager = StrategyManager::new(
+        worker_hosts,
+        Option::from(StrategyNames::Random),
+        performance_metrics.clone(),
+    );
     let load_balancer = Arc::new(RwLock::new(
-        LoadBalancer::new(strategy_manager)
+        LoadBalancer::new(strategy_manager, performance_metrics)
             .await
             .expect("failed to create load balancer"),
     ));
@@ -121,10 +131,6 @@ async fn main() {
     });
 
     let server = Server::bind(&addr).serve(make_svc);
-    // let server = Server::bind(&addr).serve(make_service_fn(move |_conn| {
-    //     let load_balancer = load_balancer.clone();
-    //     async move { Ok::<_, Infallible>(service_fn(move |req| handle(req, load_balancer.clone()))) }
-    // }));
 
     if let Err(e) = server.await {
         println!("error: {}", e);

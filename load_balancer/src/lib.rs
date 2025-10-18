@@ -1,16 +1,24 @@
 use hyper::{client::ResponseFuture, Body, Client, Request, Uri};
-use std::str::FromStr;
+use std::{cmp::Reverse, str::FromStr, sync::Arc};
+use tokio::{sync::RwLock, time::Instant};
 use tracing::Level;
 
+pub mod performance;
 pub mod strategy;
 pub mod utils;
 
-use crate::strategy::{StrategyManager, StrategyNames};
+use crate::{
+    performance::{
+        metrics::PerformanceMetrics, ConnectionsCount, WorkerConnectionsCount, WorkerDelay,
+    },
+    strategy::{StrategyManager, StrategyNames},
+};
 pub use strategy::{FastestServerStrategy, RandomStrategy, RoundRobinStrategy};
 
 pub struct LoadBalancer {
     client: Client<hyper::client::HttpConnector>,
     strategy_manager: StrategyManager,
+    perforamance_metrics: Arc<RwLock<PerformanceMetrics>>,
 }
 
 impl LoadBalancer {
@@ -27,8 +35,11 @@ impl LoadBalancer {
             new_strategy = format!("{}", new_strategy)
         );
     }
-    // TODO: Is this the right approach, to have a strategy manager?
-    pub async fn new(mut strategy_manager: StrategyManager) -> Result<Self, String> {
+
+    pub async fn new(
+        mut strategy_manager: StrategyManager,
+        perforamance_metrics: Arc<RwLock<PerformanceMetrics>>,
+    ) -> Result<Self, String> {
         if strategy_manager.get_worker().await.is_none() {
             return Err("No worker hosts provided".into());
         }
@@ -36,6 +47,7 @@ impl LoadBalancer {
         Ok(LoadBalancer {
             client: Client::new(),
             strategy_manager,
+            perforamance_metrics,
         })
     }
 
@@ -67,7 +79,24 @@ impl LoadBalancer {
             new_req.headers_mut().insert(key, value.clone());
         }
 
-        self.client.request(new_req)
+        let start = Instant::now();
+        tracing::event!(Level::INFO, "Sending request",);
+        let response = self.client.request(new_req);
+        tracing::event!(Level::INFO, "Response received",);
+        let duration = start.elapsed().as_millis();
+        // TODO: create a new/parse function to hide the use of Reverse
+        let worker_delay = WorkerDelay {
+            host: worker_uri.clone(),
+            delay_ms: duration,
+        };
+        // TODO: The following line, when uncommentded, prevents a response from being
+        // returned
+        // self.perforamance_metrics
+        //     .write()
+        //     .await
+        //     .latency_ms
+        //     .push(Reverse(worker_delay));
+        response
     }
 
     async fn get_worker(&mut self) -> String {
