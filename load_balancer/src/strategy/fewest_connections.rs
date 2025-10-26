@@ -35,11 +35,3 @@ impl FewestConnectionsStrategy {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use mock_instant::global::{Instant, SystemTime};
-    use std::time::Duration;
-
-    // TODO: I need to figure out how to mock Instant, hyper Client
-}

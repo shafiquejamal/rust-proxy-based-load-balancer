@@ -85,17 +85,10 @@ impl LoadBalancer {
         tracing::event!(Level::INFO, "Response received",);
         let duration = start.elapsed().as_millis();
         // TODO: create a new/parse function to hide the use of Reverse
-        let worker_delay = WorkerDelay {
-            host: worker_uri.clone(),
-            delay_ms: duration,
-        };
-        // TODO: The following line, when uncommentded, prevents a response from being
-        // returned
-        // self.perforamance_metrics
-        //     .write()
-        //     .await
-        //     .latency_ms
-        //     .push(Reverse(worker_delay));
+        self.perforamance_metrics
+            .write()
+            .await
+            .update_latency(&worker_uri, duration);
         response
     }
 

@@ -18,12 +18,9 @@ pub trait MyHTTPClient {
 impl Strategy for FastestServerStrategy {
     #[tracing::instrument(skip_all)]
     async fn get_worker(&mut self) -> Option<String> {
-        let workers = self.performance_metrics.read().await;
-        let fastest_worker = workers
-            .latency_ms
-            .peek()
-            .map(|worker| worker.0.host.clone());
-        fastest_worker
+        let mut workers = self.performance_metrics.write().await;
+        let fastest_worker = workers.latency_workers.workers.peek_mut();
+        return fastest_worker.map(|w| w.0.host.clone());
     }
 }
 
@@ -34,12 +31,4 @@ impl FastestServerStrategy {
             performance_metrics,
         }
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use mock_instant::global::{Instant, SystemTime};
-    use std::time::Duration;
-
-    // TODO: I need to figure out how to mock Instant, hyper Client
 }
