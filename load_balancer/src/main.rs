@@ -111,7 +111,7 @@ async fn main() {
     // TODO: allow the user to pass in the default strategy via a command line argument when
     // starting the application
     let performance_metrics = Arc::new(RwLock::new(
-        load_balancer::performance::PerformanceMetrics::new(),
+        load_balancer::performance::PerformanceMetrics::new(worker_hosts.clone()),
     ));
     let strategy_manager = StrategyManager::new(
         worker_hosts,

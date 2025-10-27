@@ -4,6 +4,7 @@ use std::{
 };
 
 use derive_more::Display;
+use tracing::Level;
 
 use crate::utils::MAX_ALLOWABLE_LATENCIES_STORED_PER_WORKER;
 
@@ -76,18 +77,28 @@ pub struct PerformanceMetrics {
 }
 
 impl PerformanceMetrics {
-    pub fn new() -> Self {
+    pub fn new(worker_hosts: Vec<String>) -> Self {
         Self {
-            latency_workers: LatencyWorkers::new(),
+            latency_workers: LatencyWorkers::new(worker_hosts.clone()),
             connections_count: BinaryHeap::new(),
         }
     }
 
+    #[tracing::instrument(skip_all)]
     pub fn update_latency(&mut self, host: &String, new_latency: u128) {
+        tracing::event!(Level::INFO, host, new_latency, "Updating latency");
         // Assumes that the best performing worker is still at the top of the heap
         let mut maybe_existing_latencies = self.latency_workers.worker_latencies.get_mut(host);
         let mut new_average_latency: u128 = 1;
         if let Some(existing_latencies) = maybe_existing_latencies {
+            // for lat in existing_latencies.iter() {
+            //     tracing::event!(Level::INFO, latency = lat);
+            // }
+            tracing::event!(
+                Level::INFO,
+                existing_latencies_length = existing_latencies.len(),
+                max = MAX_ALLOWABLE_LATENCIES_STORED_PER_WORKER
+            );
             if existing_latencies.len() > MAX_ALLOWABLE_LATENCIES_STORED_PER_WORKER {
                 existing_latencies.pop_back();
             }
@@ -95,8 +106,21 @@ impl PerformanceMetrics {
             // TODO: replace the cast with something safer
             new_average_latency =
                 existing_latencies.iter().sum::<u128>() / (existing_latencies.len() as u128);
+            existing_latencies.push_front(new_average_latency);
+        } else {
+            tracing::event!(
+                Level::INFO,
+                max = MAX_ALLOWABLE_LATENCIES_STORED_PER_WORKER,
+                "No existing latency vector",
+            );
+            let mut queue = VecDeque::new();
+            queue.push_front(new_average_latency);
+            self.latency_workers
+                .worker_latencies
+                .insert(host.clone(), queue);
         }
         let maybe_worker = self.latency_workers.workers.peek_mut();
+        tracing::event!(Level::INFO, new_average_latency);
         if let Some(mut worker) = maybe_worker {
             worker.0.delay_ms = new_average_latency;
         }
@@ -110,10 +134,19 @@ pub struct LatencyWorkers {
 }
 
 impl LatencyWorkers {
-    pub fn new() -> Self {
+    pub fn new(mut worker_hosts: Vec<String>) -> Self {
+        let heap = BinaryHeap::from_iter(
+            worker_hosts
+                .drain(..)
+                .map(|host| Reverse(WorkerDelay { host, delay_ms: 0 })),
+        );
+        let mut map = HashMap::new();
+        for host in worker_hosts.iter() {
+            map.insert(host.clone(), VecDeque::new());
+        }
         Self {
-            workers: BinaryHeap::new(),
-            worker_latencies: HashMap::new(),
+            workers: heap,
+            worker_latencies: map,
         }
     }
 }

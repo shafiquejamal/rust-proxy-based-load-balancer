@@ -38,7 +38,7 @@ impl StrategyManager {
             Box::new(fewest_connections),
         );
         Self {
-            current_strategy: default_strategy.unwrap_or(StrategyNames::Random),
+            current_strategy: default_strategy.unwrap_or(StrategyNames::FastestServer),
             all_strategies,
         }
     }

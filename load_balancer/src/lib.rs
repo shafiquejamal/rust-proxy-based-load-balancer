@@ -1,4 +1,7 @@
 use hyper::{client::ResponseFuture, Body, Client, Request, Uri};
+use rand::prelude::*;
+use rand::Rng;
+use std::thread;
 use std::{cmp::Reverse, str::FromStr, sync::Arc};
 use tokio::{sync::RwLock, time::Instant};
 use tracing::Level;
@@ -54,7 +57,8 @@ impl LoadBalancer {
     #[tracing::instrument(skip_all)]
     pub async fn forward_request(&mut self, req: Request<Body>) -> ResponseFuture {
         let mut worker_uri = self.get_worker().await;
-        tracing::event!(Level::INFO, worker_uri);
+        let host = worker_uri.clone();
+        // tracing::event!(Level::INFO, host, worker_uri);
 
         // Extract the path and query from the original request
         if let Some(path_and_query) = req.uri().path_and_query() {
@@ -80,15 +84,17 @@ impl LoadBalancer {
         }
 
         let start = Instant::now();
-        tracing::event!(Level::INFO, "Sending request",);
+        // tracing::event!(Level::INFO, worker_uri, "Sending request",);
         let response = self.client.request(new_req);
-        tracing::event!(Level::INFO, "Response received",);
+        // tracing::event!(Level::INFO, worker_uri, "Response received",);
+        thread::sleep(std::time::Duration::from_millis(10));
         let duration = start.elapsed().as_millis();
+        tracing::event!(Level::INFO, worker_uri, duration, "Duration calculated",);
         // TODO: create a new/parse function to hide the use of Reverse
         self.perforamance_metrics
             .write()
             .await
-            .update_latency(&worker_uri, duration);
+            .update_latency(&host, duration);
         response
     }
 
