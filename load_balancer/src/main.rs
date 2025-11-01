@@ -2,6 +2,7 @@ use std::{collections::HashMap, convert::Infallible, net::SocketAddr, str::FromS
 mod performance;
 mod utils;
 use crate::performance::metrics;
+use tracing::Level;
 use utils::constants;
 
 use hyper::{
@@ -15,13 +16,27 @@ use load_balancer::{
     utils::init_tracing,
     FastestServerStrategy, LoadBalancer, RandomStrategy, RoundRobinStrategy,
 };
-use tokio::sync::RwLock;
+use tokio::{sync::RwLock, time::Instant};
 
+#[tracing::instrument(skip_all)]
 async fn handle_default(
     req: Request<Body>,
     load_balancer: Arc<RwLock<LoadBalancer>>,
 ) -> Result<Response<Body>, hyper::Error> {
-    load_balancer.write().await.forward_request(req).await.await
+    let start = Instant::now();
+    let (host, result) = load_balancer.write().await.forward_request(req).await;
+    let result = result.await;
+    let duration = start.elapsed().as_millis();
+
+    tracing::event!(Level::INFO, host, duration, "Duration calculated",);
+    load_balancer
+        .write()
+        .await
+        .perforamance_metrics
+        .write()
+        .await
+        .update_latency(&host, duration);
+    result
 }
 
 // visit /set_strategy/{strategy_name}
@@ -131,6 +146,8 @@ async fn main() {
     });
 
     let server = Server::bind(&addr).serve(make_svc);
+
+    // Launch the descision engine in a separate task, which would run a loop with thread sleep
 
     if let Err(e) = server.await {
         println!("error: {}", e);

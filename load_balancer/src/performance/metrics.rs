@@ -97,24 +97,32 @@ impl PerformanceMetrics {
             tracing::event!(
                 Level::INFO,
                 existing_latencies_length = existing_latencies.len(),
-                max = MAX_ALLOWABLE_LATENCIES_STORED_PER_WORKER
+                new_latency,
+                max_allowed_latencies_stored_per_worker = MAX_ALLOWABLE_LATENCIES_STORED_PER_WORKER
             );
             if existing_latencies.len() > MAX_ALLOWABLE_LATENCIES_STORED_PER_WORKER {
-                existing_latencies.pop_back();
+                loop {
+                    existing_latencies.pop_back();
+                    if existing_latencies.len() <= MAX_ALLOWABLE_LATENCIES_STORED_PER_WORKER {
+                        break;
+                    }
+                }
             }
             existing_latencies.push_front(new_latency);
             // TODO: replace the cast with something safer
             new_average_latency =
                 existing_latencies.iter().sum::<u128>() / (existing_latencies.len() as u128);
             existing_latencies.push_front(new_average_latency);
+            tracing::event!(Level::INFO, new_latency, new_average_latency,);
         } else {
-            tracing::event!(
-                Level::INFO,
-                max = MAX_ALLOWABLE_LATENCIES_STORED_PER_WORKER,
-                "No existing latency vector",
-            );
             let mut queue = VecDeque::new();
             queue.push_front(new_average_latency);
+            tracing::event!(
+                Level::INFO,
+                new_queue_length = queue.len(),
+                new_latency,
+                new_average_latency,
+            );
             self.latency_workers
                 .worker_latencies
                 .insert(host.clone(), queue);

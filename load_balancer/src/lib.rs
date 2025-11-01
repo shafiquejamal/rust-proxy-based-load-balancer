@@ -21,7 +21,7 @@ pub use strategy::{FastestServerStrategy, RandomStrategy, RoundRobinStrategy};
 pub struct LoadBalancer {
     client: Client<hyper::client::HttpConnector>,
     strategy_manager: StrategyManager,
-    perforamance_metrics: Arc<RwLock<PerformanceMetrics>>,
+    pub perforamance_metrics: Arc<RwLock<PerformanceMetrics>>,
 }
 
 impl LoadBalancer {
@@ -55,7 +55,7 @@ impl LoadBalancer {
     }
 
     #[tracing::instrument(skip_all)]
-    pub async fn forward_request(&mut self, req: Request<Body>) -> ResponseFuture {
+    pub async fn forward_request(&mut self, req: Request<Body>) -> (String, ResponseFuture) {
         let mut worker_uri = self.get_worker().await;
         let host = worker_uri.clone();
         // tracing::event!(Level::INFO, host, worker_uri);
@@ -83,19 +83,8 @@ impl LoadBalancer {
             new_req.headers_mut().insert(key, value.clone());
         }
 
-        let start = Instant::now();
-        // tracing::event!(Level::INFO, worker_uri, "Sending request",);
         let response = self.client.request(new_req);
-        // tracing::event!(Level::INFO, worker_uri, "Response received",);
-        thread::sleep(std::time::Duration::from_millis(10));
-        let duration = start.elapsed().as_millis();
-        tracing::event!(Level::INFO, worker_uri, duration, "Duration calculated",);
-        // TODO: create a new/parse function to hide the use of Reverse
-        self.perforamance_metrics
-            .write()
-            .await
-            .update_latency(&host, duration);
-        response
+        (host, response)
     }
 
     async fn get_worker(&mut self) -> String {
