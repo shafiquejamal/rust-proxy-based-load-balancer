@@ -1,19 +1,103 @@
-use std::{convert::Infallible, net::SocketAddr, sync::Arc};
+use std::{collections::HashMap, convert::Infallible, net::SocketAddr, str::FromStr, sync::Arc};
+mod performance;
+mod utils;
+use crate::performance::metrics;
+use tracing::Level;
+use utils::constants;
 
 use hyper::{
+    body::HttpBody,
     service::{make_service_fn, service_fn},
-    Body, Request, Response, Server,
+    Body, Request, Response, Server, StatusCode,
 };
-use load_balancer::{utils::init_tracing, FastestServerStrategy, LoadBalancer, RoundRobinStrategy};
-use tokio::sync::RwLock;
+use load_balancer::{
+    performance::PerformanceMetrics,
+    strategy::{strategy_manager, StrategyManager, StrategyNames},
+    utils::init_tracing,
+    FastestServerStrategy, LoadBalancer, RandomStrategy, RoundRobinStrategy,
+};
+use tokio::{sync::RwLock, time::Instant};
 
-async fn handle(
+#[tracing::instrument(skip_all)]
+async fn handle_default(
     req: Request<Body>,
     load_balancer: Arc<RwLock<LoadBalancer>>,
 ) -> Result<Response<Body>, hyper::Error> {
-    load_balancer.write().await.forward_request(req).await.await
+    let start = Instant::now();
+    let (host, result) = load_balancer.write().await.forward_request(req).await;
+    let result = result.await;
+    let duration = start.elapsed().as_millis();
+
+    tracing::event!(Level::INFO, host, duration, "Duration calculated",);
+    load_balancer
+        .write()
+        .await
+        .perforamance_metrics
+        .write()
+        .await
+        .update_latency(&host, duration);
+    result
 }
 
+// visit /set_strategy/{strategy_name}
+#[tracing::instrument(skip_all)]
+async fn handle_set_strategy(
+    req: Request<Body>,
+    load_balancer: Arc<RwLock<LoadBalancer>>,
+) -> Result<Response<Body>, hyper::Error> {
+    let params: HashMap<String, String> = req
+        .uri()
+        .query()
+        .map(|v| {
+            url::form_urlencoded::parse(v.as_bytes())
+                .into_owned()
+                .collect()
+        })
+        .expect("Could not parse query parameters");
+    match params.get(constants::STRATEGY) {
+        Some(strategy) => {
+            // TODO: Handle the error properly, instead of crashing the server
+            let new_strategy = StrategyNames::from_str(strategy.as_str())
+                .unwrap_or_else(|_e| panic!("Could not parse strategy"));
+            let existing_strategy = load_balancer.read().await.get_strategy();
+
+            load_balancer.write().await.set_strategy(new_strategy);
+            let mut response_builder = Response::builder();
+
+            // Optionally, set headers
+            response_builder =
+                response_builder.header(constants::CONTENT_TYPE, constants::TEXT_PLAIN);
+
+            // Build the response with a 200 OK status and a body
+            let response = response_builder
+                .status(StatusCode::OK)
+                .body(Body::from(format!(
+                    "original strategy:{}, new strategy:{}",
+                    existing_strategy, new_strategy
+                )))
+                .unwrap_or_else(|e| {
+                    tracing::error!("Failed to build response: {}", e);
+                    panic!("Failed to build response")
+                });
+            Ok(response)
+        }
+        // TODO: Handle the error properly, instead of crashing the server
+        None => {
+            tracing::error!("No strategy provided");
+            panic!("No strategy provided");
+        }
+    }
+}
+
+async fn router(
+    req: Request<Body>,
+    load_balancer: Arc<RwLock<LoadBalancer>>,
+) -> Result<Response<Body>, hyper::Error> {
+    match req.uri().path() {
+        "/set-strategy" => handle_set_strategy(req, load_balancer).await,
+        _ => handle_default(req, load_balancer).await,
+    }
+}
 #[tokio::main]
 async fn main() {
     color_eyre::install().expect("Failed to install color_eyre");
@@ -34,20 +118,36 @@ async fn main() {
         ]
     };
 
-    // let round_robin_strategy = Box::new(RoundRobinStrategy::new(worker_hosts));
-    let fasted_connection_strategy = Box::new(FastestServerStrategy::new(worker_hosts));
+    // TODO: change strategy manager to take Arc<Vec<String>> instead of Vec<String>. I tried this
+    // but couldn't implement it for the FastestServerStrategy strategy, becuase of the way that
+    // I measure the fastest server - I have to consruct a WorkerDelay instance, and couldn't
+    // figure out how to get the lifetimes working
+
+    // TODO: allow the user to pass in the default strategy via a command line argument when
+    // starting the application
+    let performance_metrics = Arc::new(RwLock::new(
+        load_balancer::performance::PerformanceMetrics::new(worker_hosts.clone()),
+    ));
+    let strategy_manager = StrategyManager::new(
+        worker_hosts,
+        Option::from(StrategyNames::Random),
+        performance_metrics.clone(),
+    );
     let load_balancer = Arc::new(RwLock::new(
-        LoadBalancer::new(fasted_connection_strategy)
+        LoadBalancer::new(strategy_manager, performance_metrics)
             .await
             .expect("failed to create load balancer"),
     ));
 
     let addr: SocketAddr = SocketAddr::from(([127, 0, 0, 1], 1337));
-
-    let server = Server::bind(&addr).serve(make_service_fn(move |_conn| {
+    let make_svc = make_service_fn(move |_conn| {
         let load_balancer = load_balancer.clone();
-        async move { Ok::<_, Infallible>(service_fn(move |req| handle(req, load_balancer.clone()))) }
-    }));
+        async { Ok::<_, Infallible>(service_fn(move |_req| router(_req, load_balancer.clone()))) }
+    });
+
+    let server = Server::bind(&addr).serve(make_svc);
+
+    // Launch the descision engine in a separate task, which would run a loop with thread sleep
 
     if let Err(e) = server.await {
         println!("error: {}", e);
